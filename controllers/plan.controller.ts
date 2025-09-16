@@ -6,7 +6,7 @@ import { sequelize } from "../utils/db.ts";
 
 export const getAllPlans = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { status, popular, search, sortBy = 'sortOrder', sortOrder = 'ASC' } = req.query;
+    const { status, search, sortBy = 'createdAt', sortOrder = 'DESC' } = req.query;
     
     let whereClause: any = {};
     let orderClause: any = [[sortBy as string, sortOrder as string]];
@@ -16,17 +16,11 @@ export const getAllPlans = async (req: Request, res: Response): Promise<void> =>
       whereClause.status = status;
     }
 
-    // Filter popular plans
-    if (popular === 'true') {
-      whereClause.isPopular = true;
-    }
-
     // Search functionality
     if (search) {
       whereClause[Op.or] = [
         { name: { [Op.iLike]: `%${search}%` } },
-        { description: { [Op.iLike]: `%${search}%` } },
-        { tags: { [Op.contains]: [search] } }
+        { description: { [Op.iLike]: `%${search}%` } }
       ];
     }
 
@@ -34,7 +28,6 @@ export const getAllPlans = async (req: Request, res: Response): Promise<void> =>
       where: whereClause,
       order: orderClause,
     });
-// console.log("plans", plans);
 
     res.json({
       success: true,
@@ -83,18 +76,9 @@ export const createPlan = async (req: Request, res: Response): Promise<void> => 
       name, 
       price, 
       description, 
-      features = [], 
       originalPrice,
       currency = "INR",
-      duration,
-      maxVideos,
-      maxUsers,
-      isPopular = false,
-      status = "draft",
-      sortOrder,
-      imageUrl,
-      videoUrl,
-      tags = []
+ 
     } = req.body;
     
     if (!name || !price || !description) {
@@ -109,18 +93,10 @@ export const createPlan = async (req: Request, res: Response): Promise<void> => 
       name,
       price: parseFloat(price),
       description,
-      features,
       originalPrice: originalPrice ? parseFloat(originalPrice) : null,
       currency,
-      duration: duration ? parseInt(duration) : null,
-      maxVideos: maxVideos ? parseInt(maxVideos) : null,
-      maxUsers: maxUsers ? parseInt(maxUsers) : null,
-      isPopular,
-      status,
-      sortOrder: sortOrder ? parseInt(sortOrder) : undefined,
-      imageUrl,
-      videoUrl,
-      tags
+     
+      status: "draft"
     });
 
     res.status(201).json({
@@ -155,10 +131,7 @@ export const updatePlan = async (req: Request, res: Response): Promise<void> => 
     // Convert string numbers to proper types
     if (updateData.price) updateData.price = parseFloat(updateData.price);
     if (updateData.originalPrice) updateData.originalPrice = parseFloat(updateData.originalPrice);
-    if (updateData.duration) updateData.duration = parseInt(updateData.duration);
-    if (updateData.maxVideos) updateData.maxVideos = parseInt(updateData.maxVideos);
-    if (updateData.maxUsers) updateData.maxUsers = parseInt(updateData.maxUsers);
-    if (updateData.sortOrder) updateData.sortOrder = parseInt(updateData.sortOrder);
+  
 
     await plan.update(updateData);
 
@@ -263,13 +236,13 @@ export const togglePlanPopular = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    await plan.update({ 
-      isPopular: !plan.isPopular
-    });
+    // await plan.update({ 
+    //   isPopular: !plan.isPopular
+    // });
 
     res.json({
       success: true,
-      message: `Plan popular status ${plan.isPopular ? 'enabled' : 'disabled'}`,
+      // message: `Plan popular status ${plan.isPopular ? 'enabled' : 'disabled'}`,
       data: plan
     });
   } catch (error: any) {
@@ -287,7 +260,7 @@ export const getPlanStats = async (req: Request, res: Response): Promise<void> =
     const totalPlans = await Plan.count();
     const activePlans = await Plan.count({ where: { status: 'active', isActive: true } });
     const draftPlans = await Plan.count({ where: { status: 'draft' } });
-    const popularPlans = await Plan.count({ where: { isPopular: true, isActive: true } });
+    // const popularPlans = await Plan.count({ where: { isPopular: true, isActive: true } });
     
     const avgPriceResult = await sequelize.query(
       'SELECT AVG(price) as avgPrice FROM plans WHERE "isActive" = true',
@@ -302,7 +275,7 @@ export const getPlanStats = async (req: Request, res: Response): Promise<void> =
         total: totalPlans,
         active: activePlans,
         draft: draftPlans,
-        popular: popularPlans,
+        popular: [],
         averagePrice
       }
     });

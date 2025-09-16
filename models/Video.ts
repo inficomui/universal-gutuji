@@ -14,10 +14,12 @@ export class Video extends Model<
 > {
   declare id: CreationOptional<number>;
   declare key: string;
-  declare path: string;
   declare title: string;
-  declare testPdf: CreationOptional<string | null>;
   declare description: CreationOptional<string | null>;
+  declare path: CreationOptional<string | null>;
+  declare testPdf: CreationOptional<string | null>;
+  declare levelId: CreationOptional<number | null>;
+
   declare isActive: CreationOptional<boolean>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
@@ -38,22 +40,10 @@ const videoAttributes = {
     validate: { notEmpty: { msg: "Video key is required" } },
   },
 
-  path: {
-    type: DataTypes.STRING(500),
-    allowNull: false,
-    validate: { notEmpty: { msg: "Video path is required" } },
-  },
-
   title: {
     type: DataTypes.STRING(200),
     allowNull: false,
     validate: { notEmpty: { msg: "Video title is required" } },
-  },
-
-  testPdf: {
-    type: DataTypes.STRING(500),
-    allowNull: true,
-    defaultValue: null,
   },
 
   description: {
@@ -67,7 +57,43 @@ const videoAttributes = {
     allowNull: false, 
     defaultValue: true 
   },
+  path: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    defaultValue: null,
+    validate: {
+      len: {
+        args: [0, 500],
+        msg: "Path can be up to 500 characters long",
+      },
+    },
+  },
+  testPdf: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    defaultValue: null,
+    validate: {
+      len: {
+        args: [0, 500],
+        msg: "Test PDF path can be up to 500 characters long",
+      },
+    },
+  },
 
+  levelId: {
+    type: DataTypes.INTEGER.UNSIGNED,
+    allowNull: true,
+    defaultValue: null,
+    references: {
+      model: 'levels',
+      key: 'id',
+    },
+    validate: {
+      isInt: { msg: "Level ID must be a valid integer" },
+      min: { args: [1], msg: "Level ID must be positive" },
+    },
+  },
+  
   // TS satisfaction for timestamps
   createdAt: { type: DataTypes.DATE, allowNull: true },
   updatedAt: { type: DataTypes.DATE, allowNull: true },
@@ -80,5 +106,6 @@ Video.init(videoAttributes, {
   indexes: [
     { name: "uniq_videos_key", unique: true, fields: ["key"] },
     { name: "idx_videos_is_active", fields: ["isActive"] },
+    { name: "idx_videos_level_id", fields: ["levelId"] },
   ],
 });

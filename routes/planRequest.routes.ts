@@ -45,4 +45,9 @@ planRequestRoutes.get("/stats",
   planRequestController.getPlanRequestStats
 );
 
+planRequestRoutes.get("/bv/:userId", 
+  authenticateJWT, 
+  planRequestController.getUserBVInfo
+);
+
 export default planRequestRoutes;

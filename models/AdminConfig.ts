@@ -18,6 +18,8 @@ export class AdminConfig extends Model<
   declare description: CreationOptional<string | null>;
   declare category: CreationOptional<string>;
   declare isActive: CreationOptional<boolean>;
+  declare sponsorBonus: CreationOptional<number>;
+  declare tds: CreationOptional<number>;
   
   // Timestamps
   declare createdAt: CreationOptional<Date>;
@@ -88,6 +90,25 @@ const adminConfigAttributes = {
     type: DataTypes.BOOLEAN,
     allowNull: false,
     defaultValue: true,
+  },
+
+  sponsorBonus: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    defaultValue: 500.00,
+    validate: {
+      min: { args: [0], msg: "Sponsor bonus must be a positive number" }
+    },
+  },
+
+  tds: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: true,
+    defaultValue: 5.00,
+    validate: {
+      min: { args: [0], msg: "TDS must be a positive number" },
+      max: { args: [100], msg: "TDS cannot exceed 100%" }
+    },
   },
 
   // TS satisfaction for timestamps

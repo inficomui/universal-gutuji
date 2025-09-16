@@ -62,6 +62,12 @@ const seedAdminConfig = async () => {
         value: '24',
         description: 'Payment verification timeout in hours',
         category: 'payment'
+      },
+      {
+        key: 'sponsor-bonus',
+        value: '500',
+        description: 'Sponsor bonus amount in rupees when referred user buys a plan',
+        category: 'payment'
       }
     ];
 

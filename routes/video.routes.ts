@@ -7,6 +7,9 @@ const videoRoutes = express.Router();
 
 // Public routes (accessible to all authenticated users)
 videoRoutes.get("/", videoController.getAllVideos);
+videoRoutes.get("/level/:levelId", videoController.getVideosByLevel);
+videoRoutes.get("/key/:key", videoController.getVideoByKey); // Add this line
+
 videoRoutes.get("/:id", videoController.getVideoById);
 videoRoutes.get("/:id/stream", videoController.streamVideo);
 
@@ -36,5 +39,8 @@ videoRoutes.delete("/:id",
   requireRole("admin"), 
   videoController.deleteVideo
 );
+videoRoutes.get('/:id/qrcode', videoController.generateVideoQRCode);
+
+videoRoutes.get('/stream/:filename', videoController.streamVideo);
 
 export default videoRoutes;

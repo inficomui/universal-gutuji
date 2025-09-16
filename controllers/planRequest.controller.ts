@@ -2,7 +2,13 @@ import type { Request, Response } from "express";
 import { PlanRequest } from "../models/PlanRequest.ts";
 import { Plan } from "../models/Plan.ts";
 import { User } from "../models/User.ts";
-import { Op } from "sequelize";
+import { Wallet } from "../models/Wallet.ts";
+import { WalletTransaction } from "../models/WalletTransaction.ts";
+import { AdminConfig } from "../models/AdminConfig.ts";
+import { Op, Transaction } from "sequelize";
+import { BVMatchingService } from "../services/bvMatchingService.ts";
+import { AdvancedBVMatchingService } from "../services/advancedBvMatchingService.ts";
+import { MLMService } from "../services/mlmService.ts";
 
 // GET /api/plan-requests - Get all plan requests (Admin only)
 export const getAllPlanRequests = async (req: Request, res: Response): Promise<void> => {
@@ -88,7 +94,7 @@ export const getUserPlanRequests = async (req: Request, res: Response): Promise<
         {
           model: Plan,
           as: 'plan',
-          attributes: ['id', 'name', 'price', 'currency', 'description', 'features']
+          attributes: ['id', 'name', 'price', 'currency', 'description']
         }
       ],
       order: [['createdAt', 'DESC']]
@@ -117,7 +123,7 @@ export const createPlanRequest = async (req: Request, res: Response): Promise<vo
       notes 
     } = req.body;
     
-    const userId = (req as any).user?.id; // From JWT middleware
+    const userId = (req as any).user?.userId; // From JWT middleware
     
     if (!userId) {
       res.status(401).json({ 
@@ -246,6 +252,118 @@ export const approvePlanRequest = async (req: Request, res: Response): Promise<v
     const user = await User.findByPk(request.userId);
     if (user) {
       await user.update({ isActive: true });
+      
+      // Generate username if not exists (for first user)
+      if (!user.username) {
+        let username = MLMService.generateSponsorId();
+        // Ensure username is unique
+        while (await User.findOne({ where: { username } })) {
+          username = MLMService.generateSponsorId();
+        }
+        await user.update({ username });
+      }
+
+      // Note: BV distribution will be handled automatically by User model hook
+      // when isActive changes to true
+      
+      // Process sponsor bonus for direct sponsor only
+      console.log(`🎁 Processing sponsor bonus for plan request ${id}...`);
+      console.log(`👤 User details:`, { 
+        id: user.id, 
+        username: user.username, 
+        sponsorId: user.sponsorId,
+        name: user.name,
+        email: user.email
+      });
+      
+      if (user.sponsorId) {
+        console.log(`🔍 Looking for sponsor with username: "${user.sponsorId}"`);
+        const directSponsor = await User.findOne({
+          where: { username: user.sponsorId }
+        });
+
+        console.log(`🎯 Direct sponsor found:`, { 
+          id: directSponsor?.id, 
+          username: directSponsor?.username,
+          name: directSponsor?.name,
+          email: directSponsor?.email
+        });
+
+        if (directSponsor) {
+          // Get sponsor bonus amount from admin config
+          const sponsorBonusConfig = await AdminConfig.findOne({
+            order: [['id', 'ASC']]
+          });
+
+          console.log(`💰 Sponsor bonus config:`, { sponsorBonus: sponsorBonusConfig?.sponsorBonus });
+
+          if (sponsorBonusConfig) {
+            const bonusAmount = Number(sponsorBonusConfig.sponsorBonus);
+            console.log(`💵 Bonus amount: ₹${bonusAmount}`);
+            
+            if (bonusAmount > 0) {
+              // Get or create sponsor's wallet
+              const [sponsorWallet] = await Wallet.findOrCreate({
+                where: { userId: directSponsor.id },
+                defaults: { 
+                  userId: directSponsor.id,
+                  balance: 0,
+                  totalEarned: 0,
+                  totalWithdrawn: 0
+                }
+              });
+
+              // Add bonus to sponsor's wallet
+              await sponsorWallet.update({
+                balance: Number(sponsorWallet.balance) + bonusAmount,
+                totalEarned: Number(sponsorWallet.totalEarned) + bonusAmount,
+                lastTransactionAt: new Date()
+              });
+
+              // Add bonus to sponsor's totalIncome
+              await User.update({
+                totalIncome: Number(directSponsor.totalIncome) + bonusAmount
+              }, {
+                where: { id: directSponsor.id }
+              });
+
+              // Create wallet transaction record
+              await WalletTransaction.create({
+                userId: directSponsor.id,
+                type: 'commission',
+                amount: bonusAmount,
+                balanceBefore: Number(sponsorWallet.balance),
+                balanceAfter: Number(sponsorWallet.balance) + bonusAmount,
+                status: 'completed',
+                description: `Sponsor bonus for referring user ${user.username} (${user.name})`,
+                referenceId: `SPONSOR_BONUS_${user.id}_${directSponsor.id}_${Date.now()}`,
+                metadata: {
+                  referredUserId: user.id,
+                  referredUsername: user.username,
+                  referredUserName: user.name,
+                  referredUserEmail: user.email,
+                  sponsorId: directSponsor.id,
+                  sponsorUsername: directSponsor.username,
+                  sponsorName: directSponsor.name,
+                  planRequestId: id,
+                  bonusAmount: bonusAmount,
+                  timestamp: new Date().toISOString()
+                }
+              });
+
+              console.log(`✅ Sponsor bonus of ₹${bonusAmount} credited to DIRECT SPONSOR ${directSponsor.id} (${directSponsor.username})`);
+            } else {
+              console.log(`⚠️ Bonus amount is 0 or negative: ${bonusAmount}`);
+            }
+          } else {
+            console.log(`❌ No sponsor bonus config found`);
+          }
+        } else {
+          console.log(`❌ Direct sponsor not found for username: ${user.sponsorId}`);
+        }
+      } else {
+        console.log(`❌ User has no sponsorId: ${user.sponsorId}`);
+      }
     }
 
     res.json({
@@ -376,6 +494,26 @@ export const getPlanRequestStats = async (req: Request, res: Response): Promise<
     });
   } catch (error: any) {
     console.error("Get plan request stats error:", error);
+    res.status(500).json({ 
+      success: false,
+      message: error.message || "Server error" 
+    });
+  }
+};
+
+// GET /api/plan-requests/bv/:userId - Get user's BV information
+export const getUserBVInfo = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { userId } = req.params;
+    
+    const bvInfo = await BVMatchingService.getUserBVSummary(Number(userId));
+    
+    res.json({
+      success: true,
+      data: bvInfo
+    });
+  } catch (error: any) {
+    console.error("Get user BV info error:", error);
     res.status(500).json({ 
       success: false,
       message: error.message || "Server error" 

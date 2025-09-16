@@ -1,59 +1,147 @@
 import type { Request, Response } from "express";
 import jwt from "jsonwebtoken";
-// import { User } from "../models/User.ts";
+
 import crypto from "crypto";
 import dotenv from "dotenv";
 dotenv.config();
-// import { sendEmail } from "../utils/email.ts";
+
 import { User } from "../models/User.ts";
 import { sendEmail } from "../utils/email.ts";
+import { BVMatchingService } from "../services/bvMatchingService.ts";
 const generateToken = (userId: number): string => {
   return jwt.sign({ userId }, process.env.JWT_SECRET || "your-secret-key", {
     expiresIn: "7d",
   });
 };
 
-
-  export const register = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { name, email, password } = req.body as {
-        name?: string; email?: string; password?: string;
-      };
-
-      if (!name || !email || !password || typeof password !== "string") {
-        res.status(400).json({ message: "name, email and password are required" });
-        return;
-      }
-
-      const normalizedEmail = email.toLowerCase().trim();
-
-      const existingUser = await User.findOne({ where: { email: normalizedEmail } });
-      if (existingUser) {
-        res.status(400).json({ message: "User already exists with this email" });
-        return;
-      }
-
-      const user = await User.create({ name, email: normalizedEmail, password });
+const generateUsername = (): string => {
+  const digits = '0123456789';
+  let result = '';
+  for (let i = 0; i < 8; i++) {
+    result += digits.charAt(Math.floor(Math.random() * digits.length));
+  }
+  return result;
+};
 
 
-      const token = generateToken(user.id);
-      res.status(201).json({
-        success: true,
-        message: "User created successfully",
-        user: { 
-          id: user.id, 
-          name: user.name, 
-          email: user.email, 
-          role: user.role,
-          isActive: user.isActive 
-        },
-        token,
-      });
-    } catch (error: any) {
-      console.error("Registration error:", error);
-      res.status(500).json({ message: error.message || "Server error" });
+export const register = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { name, email, password, sponsorId, position } = req.body as {
+      name?: string; email?: string; password?: string; sponsorId?: string; position?: string;
+    };
+
+    if (!name || !email || !password || typeof password !== "string") {
+      res.status(400).json({ message: "name, email, and password are required" });
+      return;
     }
-  };
+    console.log("position", position);
+    
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const existingUser = await User.findOne({ where: { email: normalizedEmail } });
+    if (existingUser) {
+      res.status(400).json({ message: "User already exists with this email" });
+      return;
+    }
+
+    // Check if this is the first user
+    const userCount = await User.count();
+
+    if (userCount > 0) {
+      // For all users except the first one, sponsorId and position are required
+      if (!sponsorId) {
+        res.status(400).json({ message: "sponsorId is required for registration" });
+        return;
+      }
+      
+      if (!position) {
+        res.status(400).json({ message: "position is required for registration (left or right)" });
+        return;
+      }
+
+      // Validate position
+      if (position !== 'left' && position !== 'right') {
+        res.status(400).json({ message: "position must be either 'left' or 'right'" });
+        return;
+      }
+      
+      const sponsor = await User.findOne({ where: { username: sponsorId } });
+      if (!sponsor) {
+        res.status(400).json({ message: "Invalid sponsor username" });
+        return;
+      }
+
+      // Position validation - just ensure it's valid
+      if (position !== 'left' && position !== 'right') {
+        res.status(400).json({ 
+          message: `Position must be either 'left' or 'right'` 
+        });
+        return;
+      }
+    }
+
+    // Generate unique username for new user
+    let newUsername: string | undefined;
+    let isUnique = false;
+    let attempts = 0;
+
+    while (!isUnique && attempts < 10) {
+      newUsername = generateUsername();
+      const existingUsername = await User.findOne({ where: { username: newUsername } });
+      if (!existingUsername) {
+        isUnique = true;
+      }
+      attempts++;
+    }
+
+    if (!isUnique) {
+      res.status(500).json({ message: "Failed to generate unique username" });
+      return;
+    }
+
+    let user;
+    try {
+      user = await User.create({
+        name,
+        email: normalizedEmail,
+        password,
+        username: newUsername!,
+        sponsorId: userCount === 0 ? null : sponsorId, // null for first user, else sponsorId
+        position: position as 'left' | 'right' | null,
+        isActive: false
+      });
+    } catch (createError: any) {
+      // Handle any other database errors
+      console.error("User creation error:", createError);
+      throw createError; // Re-throw errors
+    }
+
+    // Note: BV distribution will happen after admin accepts user's plan purchase
+    // No BV distribution during registration
+
+    const token = generateToken(user.id);
+
+    res.status(201).json({
+      success: true,
+      message: "User created successfully",
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isActive: user.isActive,
+        username: user.username,
+        sponsorId: user.sponsorId,
+        position: user.position
+      },
+      token,
+    });
+  } catch (error: any) {
+    console.error("Registration error:", error);
+    res.status(500).json({ message: error.message || "Server error" });
+  }
+};
 
 
 // LOGIN
@@ -84,6 +172,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     // Strip password from output (your toJSON already does this, but being explicit is fine)
     const { password: _omit, ...safe } = user.get({ plain: true });
+// console.log("safe", safe);
 
     res.json({
       success: true,
@@ -93,7 +182,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         name: safe.name, 
         email: safe.email, 
         role: safe.role,
-        isActive: safe.isActive 
+        isActive: safe.isActive,
+        username: safe.username,
+        position: safe.position,
+        sponsorId: safe.sponsorId 
       },
       token,
     });
@@ -113,7 +205,219 @@ export const logout = async (_req: Request, res: Response): Promise<void> => {
   });
 };
 
+// GET /api/auth/my-referrals - Get user's referrals
+export const getMyReferrals = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = (req as any).user?.userId;
+    // console.log("req.user", req.user);
+    
+    if (!userId) {
+      res.status(401).json({ 
+        success: false,
+        message: "User not authenticated" 
+      });
+      return;
+    }
 
+    // Get current user's username
+    const currentUser = await User.findByPk(userId);
+    // console.log("currentUser", currentUser);
+    if (!currentUser || !currentUser.username) {
+      res.status(404).json({ 
+        success: false,
+        message: "User or username not found" 
+      });
+      return;
+    }
+
+    // Debug: Check what users exist with this sponsorId
+    // console.log('Looking for users with sponsorId:', currentUser.username);
+    
+    // Debug: Check all users and their sponsorIds
+    const allUsers = await User.findAll({
+      attributes: ['id', 'name', 'username', 'sponsorId'],
+      order: [['createdAt', 'DESC']]
+    });
+    // console.log('All users in database:', allUsers.map(u => ({ id: u.id, name: u.name, username: u.username, sponsorId: u.sponsorId })));
+    
+    // Find all users referred by this user (sponsorId = current user's username)
+   // Get referrals
+const referrals = await User.findAll({
+  where: { sponsorId: currentUser.username },
+  attributes: [
+    'id',
+    'name',
+    'email',
+    'username',
+    'sponsorId',
+    'position',     // ← add this
+    'isActive',
+    'createdAt',
+  ],
+  order: [['createdAt', 'DESC']],
+})
+
+    // console.log('Found referrals:', referrals.length);
+    // console.log('Referrals data:', referrals.map(r => ({ id: r.id, name: r.name, sponsorId: r.sponsorId })));
+// console.log("referrals", referrals);
+
+    // Get referral statistics
+    const totalReferrals = referrals.length;
+    const activeReferrals = referrals.filter(ref => ref.isActive).length;
+// console.log("referrals", referrals);
+
+    res.json({
+      success: true,
+      data: {
+        myUsername: currentUser.username,
+        totalReferrals,
+        activeReferrals,
+        inactiveReferrals: totalReferrals - activeReferrals,
+        referrals: referrals.map(ref => ({
+          id: ref.id,
+          name: ref.name,
+          email: ref.email,
+          username: ref.username,
+          sponsorId: ref.sponsorId,
+          position: ref.position,
+          isActive: ref.isActive,
+          joinedAt: ref.createdAt
+        }))
+      }
+    });
+  } catch (error: any) {
+    console.error("Get referrals error:", error);
+    res.status(500).json({ 
+      success: false,
+      message: error.message || "Server error" 
+    });
+  }
+};
+
+// GET /api/auth/profile - Get user profile with live income and match data
+export const getUserProfile = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = (req as any).user?.userId;
+    
+    if (!userId) {
+      res.status(401).json({ 
+        success: false,
+        message: "User not authenticated" 
+      });
+      return;
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      res.status(404).json({ 
+        success: false,
+        message: "User not found" 
+      });
+      return;
+    }
+
+    // Get sponsor information if user was referred by someone
+    let sponsorInfo = null;
+    if (user.sponsorId) {
+      const sponsor = await User.findOne({
+        where: { username: user.sponsorId },
+        attributes: ['id', 'name', 'email', 'username']
+      });
+      if (sponsor) {
+        sponsorInfo = {
+          id: sponsor.id,
+          name: sponsor.name,
+          email: sponsor.email,
+          username: sponsor.username
+        };
+      }
+    }
+
+    // Get user's BV summary for live data
+    const bvSummary = await BVMatchingService.getUserBVSummary(userId) || {
+      leftBV: 0,
+      rightBV: 0,
+      carryLeft: 0,
+      carryRight: 0,
+      totalBV: 0,
+      canMatch: false,
+      matchableAmount: 0
+    };
+    
+    // Get user's referral tree BV for live referral data
+    const referralTreeBV = await BVMatchingService.getUserReferralTreeBV(userId);
+
+    // Get user's referrals count
+    const referrals = await User.findAll({
+      where: { sponsorId: user.username },
+      attributes: ['id', 'name', 'username', 'position', 'isActive', 'createdAt']
+    });
+
+    const totalReferrals = referrals.length;
+    const activeReferrals = referrals.filter(ref => ref.isActive).length;
+
+    res.json({
+      success: true,
+      data: {
+        // Basic user info
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isActive: user.isActive,
+        username: user.username,
+        sponsorId: user.sponsorId,
+        position: user.position,
+        createdAt: user.createdAt,
+        
+        // Sponsor info
+        sponsor: sponsorInfo,
+        
+        // Live income data
+        income: {
+          totalIncome: Number(user.totalIncome) || 0,
+          totalWithdrawals: Number(user.totalWithdrawals) || 0,
+          availableBalance: (Number(user.totalIncome) || 0) - (Number(user.totalWithdrawals) || 0),
+          totalMatched: Number(user.totalMatched) || 0
+        },
+        
+        // Live BV data
+        bv: {
+          leftBV: (bvSummary as any).current?.leftBV || (bvSummary as any).leftBV || 0,
+          rightBV: (bvSummary as any).current?.rightBV || (bvSummary as any).rightBV || 0,
+          carryLeft: (bvSummary as any).current?.carryLeft || (bvSummary as any).carryLeft || 0,
+          carryRight: (bvSummary as any).current?.carryRight || (bvSummary as any).carryRight || 0,
+          totalBV: (bvSummary as any).total?.leftBV + (bvSummary as any).total?.rightBV || (bvSummary as any).totalBV || 0,
+          canMatch: (bvSummary as any).canMatch || false,
+          matchableAmount: (bvSummary as any).matchableAmount || 0
+        },
+        
+        // Live referral data
+        referrals: {
+          total: totalReferrals,
+          active: activeReferrals,
+          inactive: totalReferrals - activeReferrals,
+          leftSide: {
+            count: referralTreeBV.leftSide.referralCount,
+            totalBV: referralTreeBV.leftSide.totalBV,
+            referrals: referralTreeBV.leftSide.referrals
+          },
+          rightSide: {
+            count: referralTreeBV.rightSide.referralCount,
+            totalBV: referralTreeBV.rightSide.totalBV,
+            referrals: referralTreeBV.rightSide.referrals
+          }
+        }
+      }
+    });
+  } catch (error: any) {
+    console.error("Get user profile error:", error);
+    res.status(500).json({ 
+      success: false,
+      message: error.message || "Server error" 
+    });
+  }
+};
 
 const APP_NAME   = "Exam Portal";
 
@@ -401,6 +705,62 @@ export const verifyToken = async (req: Request, res: Response): Promise<void> =>
     res.status(500).json({ 
       success: false,
       message: error?.message || "Server error" 
+    });
+  }
+};
+
+// Lookup sponsor by username
+export const lookupSponsor = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { username } = req.params;
+
+    if (!username || username.length < 3) {
+      res.status(400).json({
+        success: false,
+        message: "Username must be at least 3 characters long"
+      });
+      return;
+    }
+
+    const sponsor = await User.findOne({
+      where: { 
+        username: username,
+        role: 'user' // Only allow user role as sponsors
+      },
+      attributes: ['id', 'name', 'email', 'username', 'isActive']
+    });
+
+    if (!sponsor) {
+      res.status(404).json({
+        success: false,
+        message: "Sponsor not found"
+      });
+      return;
+    }
+
+    if (!sponsor.isActive) {
+      res.status(400).json({
+        success: false,
+        message: "This sponsor account is inactive"
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        id: sponsor.id,
+        name: sponsor.name,
+        email: sponsor.email,
+        username: sponsor.username,
+        isActive: sponsor.isActive
+      }
+    });
+  } catch (error: any) {
+    console.error("Lookup sponsor error:", error);
+    res.status(500).json({
+      success: false,
+      message: error?.message || "Server error"
     });
   }
 };

@@ -25,7 +25,7 @@ export const authenticateJWT: RequestHandler = async (req, res, next) => {
 
     // 👇 fetch only what you need, as a plain object
     const authUser = await User.findByPk(decoded.userId, {
-      attributes: ["id", "role", "isActive"],
+      attributes: ["id", "role"],
       raw: true,
     });
     // console.log("authUser (plain):", authUser);
@@ -33,9 +33,9 @@ export const authenticateJWT: RequestHandler = async (req, res, next) => {
     if (!authUser) return res.status(401).json({ message: "Invalid token." });
 
     // In some DBs tinyint(1) may come back as 0/1; !! ensures boolean
-    if (!authUser.isActive || !Boolean(authUser.isActive)) {
-      return res.status(403).json({ message: "User is blocked." });
-    }
+    // if (!authUser.isActive || !Boolean(authUser.isActive)) {
+    //   return res.status(403).json({ message: "User is blocked." });
+    // }
 
     // Attach minimal identity to the request
     (req as any).user = {

@@ -7,14 +7,23 @@ import path from "node:path";
 
 import authRoutes from "./routes/auth.routes.ts";
 import videoRoutes from "./routes/video.routes.ts";
+import levelRoutes from "./routes/level.routes.ts";
 import planRoutes from "./routes/plan.routes.ts";
 import planRequestRoutes from "./routes/planRequest.routes.ts";
 import paymentRoutes from "./routes/payment.routes.ts";
+import pdfRoutes from "./routes/pdf.routes.ts";
+import bvRoutes from "./routes/bv.routes.ts";
+import adminRoutes from "./routes/admin.routes.ts";
 import settingsRoutes from "./routes/settings.routes.ts";
+import mlmRoutes from "./routes/mlm.routes.ts";
+import userPlanRoutes from "./routes/userPlan.routes.ts";
+import kycRoutes from "./routes/kyc.routes.ts";
+import withdrawalRoutes from "./routes/withdrawal.routes.ts";
 import { configurePassport } from "./middlewares/passport.ts";
 import { sequelize } from "./utils/db.ts";
 import "./models/User.ts";
 import "./models/Video.ts";
+import "./models/Level.ts";
 import "./models/Plan.ts";
 import "./models/PlanRequest.ts";
 import "./models/Payment.ts";
@@ -41,12 +50,9 @@ const PORT = process.env.PORT || 5000;
 
 // CORS configuration - Development mode (more permissive)
 const corsOptions: cors.CorsOptions = {
-  origin: true, // Allow all origins in development
+  origin: "*", // Allow all origins in development
   credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
-  optionsSuccessStatus: 200,
-  preflightContinue: false
+ 
 };
 
 app.use(cors(corsOptions));
@@ -64,10 +70,18 @@ configurePassport(passport);
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/videos", videoRoutes);
+app.use("/api/levels", levelRoutes);
 app.use("/api/plans", planRoutes);
 app.use("/api/plan-requests", planRequestRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/pdf", pdfRoutes);
+app.use("/api/bv", bvRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/mlm", mlmRoutes);
+app.use("/api/user-plans", userPlanRoutes);
+app.use("/api/kyc", kycRoutes);
+app.use("/api/withdrawals", withdrawalRoutes);
 
 // Health check
 app.get("/api/health", (req: Request, res: Response) => {
@@ -102,8 +116,12 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 (async () => {
   try {
     // 1) connect DB first (uses bootstrap .env)
-    // await sequelize.authenticate();
-    await sequelize.sync({ alter: true });
+    await sequelize.authenticate();
+    console.log("✅ Database connected successfully");
+    
+    // 2) sync database - skip alter to avoid MySQL key limit
+    await sequelize.sync({ alter: false });
+    console.log("📊 Database tables synced");
 
     // 2) init app config (loads from DB into memory)
 

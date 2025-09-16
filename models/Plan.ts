@@ -29,50 +29,25 @@ export class Plan extends Model<
   declare price: number;
   declare originalPrice: CreationOptional<number | null>;
   declare currency: CreationOptional<string>;
-  declare features: CreationOptional<string[]>;
-  declare duration: CreationOptional<number | null>; // in days, null for lifetime
-  declare maxVideos: CreationOptional<number | null>; // null for unlimited
-  declare maxUsers: CreationOptional<number | null>; // null for unlimited
-  declare isPopular: CreationOptional<boolean>;
+ 
   declare isActive: CreationOptional<boolean>;
   declare status: CreationOptional<PlanStatus>;
-  declare sortOrder: CreationOptional<number>;
-  declare imageUrl: CreationOptional<string | null>;
-  declare videoUrl: CreationOptional<string | null>;
-  declare tags: CreationOptional<string[]>;
+  declare bvValue: CreationOptional<number>;
   
   // Timestamps
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 
-  // Helper methods
-  isLifetime() {
-    return this.duration === null;
-  }
 
-  hasUnlimitedVideos() {
-    return this.maxVideos === null;
-  }
 
-  hasUnlimitedUsers() {
-    return this.maxUsers === null;
-  }
 
   getDiscountPercentage() {
     if (!this.originalPrice || this.originalPrice <= this.price) return 0;
     return Math.round(((this.originalPrice - this.price) / this.originalPrice) * 100);
   }
 
-  toJSON() {
-    const data = this.get();
-    return {
-      ...data,
-      discountPercentage: this.getDiscountPercentage(),
-      isLifetime: this.isLifetime(),
-      hasUnlimitedVideos: this.hasUnlimitedVideos(),
-      hasUnlimitedUsers: this.hasUnlimitedUsers(),
-    };
-  }
+  
+
 }
 
 const planAttributes = {
@@ -127,62 +102,8 @@ const planAttributes = {
     },
   },
 
-  features: {
-    type: DataTypes.JSON,
-    allowNull: false,
-    defaultValue: [],
-    validate: {
-      isValidFeatures(value: any) {
-        if (!Array.isArray(value)) {
-          throw new Error("Features must be an array");
-        }
-        if (value.length > 20) {
-          throw new Error("Maximum 20 features allowed");
-        }
-        for (const feature of value) {
-          if (typeof feature !== "string" || feature.length > 200) {
-            throw new Error("Each feature must be a string with max 200 characters");
-          }
-        }
-      },
-    },
-  },
 
-  duration: {
-    type: DataTypes.INTEGER.UNSIGNED,
-    allowNull: true,
-    defaultValue: null,
-    validate: { 
-      min: { args: [1], msg: "Duration must be at least 1 day" },
-      max: { args: [3650], msg: "Duration cannot exceed 10 years" }
-    },
-  },
 
-  maxVideos: {
-    type: DataTypes.INTEGER.UNSIGNED,
-    allowNull: true,
-    defaultValue: null,
-    validate: { 
-      min: { args: [1], msg: "Max videos must be at least 1" },
-      max: { args: [999999], msg: "Max videos too high" }
-    },
-  },
-
-  maxUsers: {
-    type: DataTypes.INTEGER.UNSIGNED,
-    allowNull: true,
-    defaultValue: null,
-    validate: { 
-      min: { args: [1], msg: "Max users must be at least 1" },
-      max: { args: [999999], msg: "Max users too high" }
-    },
-  },
-
-  isPopular: {
-    type: DataTypes.BOOLEAN,
-    allowNull: false,
-    defaultValue: false,
-  },
 
   isActive: {
     type: DataTypes.BOOLEAN,
@@ -202,51 +123,15 @@ const planAttributes = {
     },
   },
 
-  sortOrder: {
-    type: DataTypes.INTEGER,
+
+
+  bvValue: {
+    type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
     defaultValue: 0,
     validate: { 
-      min: { args: [0], msg: "Sort order must be non-negative" }
-    },
-  },
-
-  imageUrl: {
-    type: DataTypes.STRING(500),
-    allowNull: true,
-    defaultValue: null,
-    validate: {
-      isUrl: { msg: "Image URL must be a valid URL" },
-    },
-  },
-
-  videoUrl: {
-    type: DataTypes.STRING(500),
-    allowNull: true,
-    defaultValue: null,
-    validate: {
-      isUrl: { msg: "Video URL must be a valid URL" },
-    },
-  },
-
-  tags: {
-    type: DataTypes.JSON,
-    allowNull: false,
-    defaultValue: [],
-    validate: {
-      isValidTags(value: any) {
-        if (!Array.isArray(value)) {
-          throw new Error("Tags must be an array");
-        }
-        if (value.length > 10) {
-          throw new Error("Maximum 10 tags allowed");
-        }
-        for (const tag of value) {
-          if (typeof tag !== "string" || tag.length > 50) {
-            throw new Error("Each tag must be a string with max 50 characters");
-          }
-        }
-      },
+      min: { args: [0], msg: "BV value must be non-negative" },
+      max: { args: [999999.99], msg: "BV value too high" }
     },
   },
 
@@ -263,7 +148,7 @@ Plan.init(planAttributes, {
     where: {
       isActive: true,
     },
-    order: [["sortOrder", "ASC"], ["createdAt", "DESC"]],
+    order: [["createdAt", "DESC"]],
   },
   scopes: {
     active: {
@@ -282,13 +167,6 @@ Plan.init(planAttributes, {
         status: "draft",
       },
     },
-    popular: {
-      where: {
-        isPopular: true,
-        isActive: true,
-        status: "active",
-      },
-    },
     withInactive: {
       // No additional where clause - shows all plans
     },
@@ -296,8 +174,6 @@ Plan.init(planAttributes, {
   indexes: [
     { name: "idx_plans_status", fields: ["status"] },
     { name: "idx_plans_is_active", fields: ["isActive"] },
-    { name: "idx_plans_is_popular", fields: ["isPopular"] },
-    { name: "idx_plans_sort_order", fields: ["sortOrder"] },
     { name: "idx_plans_price", fields: ["price"] },
   ],
 });
@@ -309,23 +185,8 @@ Plan.beforeValidate((plan) => {
     plan.originalPrice = plan.price;
   }
   
-  // Ensure features is always an array
-  if (!Array.isArray(plan.features)) {
-    plan.features = [];
-  }
   
-  // Ensure tags is always an array
-  if (!Array.isArray(plan.tags)) {
-    plan.tags = [];
-  }
 });
 
-Plan.beforeCreate(async (plan) => {
-  // Set default sort order if not provided
-  if (plan.sortOrder === undefined || plan.sortOrder === null) {
-    const maxSortOrder = (await Plan.max("sortOrder")) as number || 0;
-    plan.sortOrder = maxSortOrder + 1;
-  }
-});
 
 export default Plan;
