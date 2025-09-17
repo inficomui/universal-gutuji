@@ -19,15 +19,20 @@ import mlmRoutes from "./routes/mlm.routes.ts";
 import userPlanRoutes from "./routes/userPlan.routes.ts";
 import kycRoutes from "./routes/kyc.routes.ts";
 import withdrawalRoutes from "./routes/withdrawal.routes.ts";
+import certificateRoutes from "./routes/certificate.routes.ts";
+import competitionRoutes from "./routes/competition.routes.ts";
+import participationRoutes from "./routes/participation.routes.ts";
 import { configurePassport } from "./middlewares/passport.ts";
 import { sequelize } from "./utils/db.ts";
 import "./models/User.ts";
-import "./models/Video.ts";
 import "./models/Level.ts";
+import "./models/Video.ts";
 import "./models/Plan.ts";
 import "./models/PlanRequest.ts";
 import "./models/Payment.ts";
 import "./models/AdminConfig.ts";
+import "./models/Competition.ts";
+import "./models/CompetitionParticipation.ts";
 import "./models/associations.ts";
 
 
@@ -60,6 +65,7 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use("/api/uploads", express.static(path.join(process.cwd(), "uploads")));
+app.use("/storage/certificates", express.static(path.join(process.cwd(), "storage/certificates")));
 
 // Passport
 app.use(passport.initialize());
@@ -82,6 +88,9 @@ app.use("/api/mlm", mlmRoutes);
 app.use("/api/user-plans", userPlanRoutes);
 app.use("/api/kyc", kycRoutes);
 app.use("/api/withdrawals", withdrawalRoutes);
+app.use("/api/certificates", certificateRoutes);
+app.use("/api/competitions", competitionRoutes);
+app.use("/api/participations", participationRoutes);
 
 // Health check
 app.get("/api/health", (req: Request, res: Response) => {

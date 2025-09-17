@@ -36,6 +36,7 @@ import {
     declare id: CreationOptional<number>;
     declare name: string;
     declare email: string;
+    declare phone: CreationOptional<string | null>; // User's phone number
     declare password: string;
     declare role: CreationOptional<Role>;
     declare isActive: CreationOptional<boolean>;
@@ -103,6 +104,19 @@ import {
       set(this: User, val: string) {
         this.setDataValue("email", (val ?? "").trim().toLowerCase());
       },
+    },
+  
+    phone: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      defaultValue: null,
+      validate: {
+        isValidPhone(value: string | null) {
+          if (value && !/^[\+]?[1-9][\d]{0,15}$/.test(value)) {
+            throw new Error("Invalid phone number format");
+          }
+        }
+      }
     },
   
     password: { type: DataTypes.STRING(255), allowNull: false },

@@ -10,6 +10,9 @@ import { BVLog } from './BvLogs.ts';
 import { Level } from './Level.ts';
 import { Video } from './Video.ts';
 import { Kyc } from './Kyc.ts';
+import { CertificateRequest } from './CertificateRequest.ts';
+import { Competition } from './Competition.ts';
+import { CompetitionParticipation } from './CompetitionParticipation.ts';
 
 // Define associations
 PlanRequest.belongsTo(User, { 
@@ -199,5 +202,68 @@ User.hasMany(Kyc, {
   foreignKey: 'processedBy' 
 });
 
-export { Plan, PlanRequest, Payment, User, Wallet, WalletTransaction, Withdrawal, UserBV, BVLog, Level, Video, Kyc };
+// CertificateRequest associations
+CertificateRequest.belongsTo(User, {
+  as: 'user',
+  foreignKey: 'userId',
+  onDelete: 'CASCADE',
+  onUpdate: 'CASCADE'
+});
+
+CertificateRequest.belongsTo(Level, {
+  as: 'level',
+  foreignKey: 'levelId',
+  onDelete: 'CASCADE',
+  onUpdate: 'CASCADE'
+});
+
+User.hasMany(CertificateRequest, {
+  as: 'certificateRequests',
+  foreignKey: 'userId'
+});
+
+Level.hasMany(CertificateRequest, {
+  as: 'certificateRequests',
+  foreignKey: 'levelId'
+});
+
+// Competition associations
+Competition.hasMany(CompetitionParticipation, {
+  as: 'participations',
+  foreignKey: 'competitionId'
+});
+
+// CompetitionParticipation associations
+CompetitionParticipation.belongsTo(User, {
+  as: 'user',
+  foreignKey: 'userId',
+  onDelete: 'CASCADE',
+  onUpdate: 'CASCADE'
+});
+
+CompetitionParticipation.belongsTo(Competition, {
+  as: 'competition',
+  foreignKey: 'competitionId',
+  onDelete: 'CASCADE',
+  onUpdate: 'CASCADE'
+});
+
+CompetitionParticipation.belongsTo(User, {
+  as: 'verifier',
+  foreignKey: 'verifiedBy',
+  onDelete: 'SET NULL',
+  onUpdate: 'CASCADE'
+});
+
+User.hasMany(CompetitionParticipation, {
+  as: 'competitionParticipations',
+  foreignKey: 'userId'
+});
+
+User.hasMany(CompetitionParticipation, {
+  as: 'verifiedParticipations',
+  foreignKey: 'verifiedBy'
+});
+
+export { Plan, PlanRequest, Payment, User, Wallet, WalletTransaction, Withdrawal, UserBV, BVLog, Level, Video, Kyc, CertificateRequest, Competition, CompetitionParticipation };
 
